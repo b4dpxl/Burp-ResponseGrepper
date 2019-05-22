@@ -1,3 +1,14 @@
+"""
+Adds a tab to BurpSuite responses to extract the matches of a regular expression
+
+History:
+0.2 - Added a default regex ".*canary.*" and made the regex case insensitive
+
+"""
+__author__ = "b4dpxl"
+__license__ = "GPL"
+__version__ = "0.2"
+
 import json
 import re
 import sys
@@ -24,7 +35,7 @@ ENABLE_TAB_MENU_ITEMS = {
 }
 _force_tab = False
 
-_target_regex = None
+_target_regex = r""".*canary.*"""
 
 
 class BurpExtender(IBurpExtender, IMessageEditorTabFactory, IContextMenuFactory):
@@ -64,9 +75,9 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
 
 <div class='test'>(?P<tag>.*?)</div>
 
-""", _target_regex).strip()
+""", _target_regex)
         if res is not None:
-            _target_regex = res
+            _target_regex = res.strip()
 
 
 class ResponseGrepperTab(IMessageEditorTab):
@@ -109,7 +120,7 @@ class ResponseGrepperTab(IMessageEditorTab):
         try:
             r = self._helpers.analyzeResponse(content)
             msg = content[r.getBodyOffset():].tostring()
-            return re.search(_target_regex, msg) or _force_tab
+            return re.search(_target_regex, msg, re.IGNORECASE) or _force_tab
         except Exception as e:
             self._str_error = str(e)
             self._regex_fail = True
@@ -132,10 +143,10 @@ class ResponseGrepperTab(IMessageEditorTab):
             self._txtInput.setText("Error parsing regex:\n{}\n\n{}".format(_target_regex, self._str_error))
 
         else:
-            if re.search(_target_regex, msg):
+            if re.search(_target_regex, msg, re.IGNORECASE):
                 out = ""
                 matches = []
-                res = re.finditer(_target_regex, msg)
+                res = re.finditer(_target_regex, msg, re.IGNORECASE)
                 c = 0
                 for m in res:
                     c += 1
