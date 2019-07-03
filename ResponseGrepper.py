@@ -4,11 +4,12 @@ Adds a tab to BurpSuite responses to extract the matches of a regular expression
 History:
 0.2 - Added a default regex ".*canary.*" and made the regex case insensitive
 1.0 - Custom tab pane with HTML styling and per-request regex
+1.1 - Updated styling and handled multiple spaces
 
 """
 __author__ = "b4dpxl"
 __license__ = "GPL"
-__version__ = "1.0"
+__version__ = "1.1"
 
 import re
 import sys
@@ -27,6 +28,7 @@ from java.awt import BorderLayout
 
 
 NAME = "Response Grepper"
+TAB_TITLE = "Grep"
 
 
 def html_encode(text):
@@ -37,8 +39,9 @@ def html_encode(text):
         "'": "&apos;",
         ">": "&gt;",
         "<": "&lt;",
+        # " ": "&nbsp;"
     }
-    return "".join(html_escape_table.get(c,c) for c in text)
+    return ("".join(html_escape_table.get(c, c) for c in text)).replace("  ", " &nbsp;")
 
 
 def fix_exception(func):
@@ -53,6 +56,10 @@ def fix_exception(func):
 
 
 class BurpExtender(IBurpExtender, IMessageEditorTabFactory, IContextMenuFactory):
+
+    _callbacks = None
+    _helpers = None
+
     def registerExtenderCallbacks(self, callbacks):
         # for error handling
         sys.stdout = callbacks.getStdout()  
@@ -65,7 +72,6 @@ class BurpExtender(IBurpExtender, IMessageEditorTabFactory, IContextMenuFactory)
         callbacks.registerMessageEditorTabFactory(self)
 
     def createNewInstance(self, controller, editable): 
-        # print(dir(controller))
         return ResponseGrepperTab(self, controller, editable)
         
 
@@ -74,41 +80,33 @@ class ResponseGrepperTab(IMessageEditorTab):
     @fix_exception
     def __init__(self, extender, controller, editable):
         self._extender = extender
+        self._currentMessage = None
         self._helpers = extender._helpers
-        self._editable = editable
-
-        # self._txtInput = extender._callbacks.createTextEditor()
-        # self._txtInput.setEditable(editable)
+        # self._editable = editable
         self.results = MyEditor()
-        # print(controller.toString())
 
     def getTabCaption(self):
-        return NAME
+        return TAB_TITLE
 
     def getUiComponent(self):
         return self.results.getComponent()
 
     @fix_exception
     def isEnabled(self, content, isRequest):
-        if isRequest:
-            return False
-
-        return True
+        return not isRequest
 
     @fix_exception
     def setMessage(self, content, isRequest):
+        self.results.setEditable(False)
+        self._currentMessage = content
+
         if content is None or isRequest:
             self.results.setText(None)
-            self.results.setEditable(False)
             return
 
         r = self._helpers.analyzeResponse(content)
         msg = content[r.getBodyOffset():].tostring()
-
         self.results.setMessage(msg)
-
-        self.results.setEditable(False)
-        self._currentMessage = content
 
     def getMessage(self): 
         return self._currentMessage
@@ -133,8 +131,6 @@ class MyEditor(ITextEditor):
 
         box = swing.Box.createHorizontalBox()
         box.add(swing.JLabel("Regular Expression"))
-        # vert.add(box)
-        # box = swing.Box.createHorizontalBox()
         self.re_box = swing.JTextField(100)
         box.add(self.re_box)
         box.add(swing.JButton('Update', actionPerformed=self._update_rex))
@@ -147,16 +143,18 @@ class MyEditor(ITextEditor):
         self.results.setEditable(False)
         kit = html.HTMLEditorKit()
         ss = kit.getStyleSheet()
+        ss.addRule("* {font-size: 11pt;}")
         ss.addRule(".error {color: #CC0000;}")
         ss.addRule("li {color: #000000;}")
         ss.addRule(".result {color: #006600; font-family: monospace;}")
-        ss.addRule(".subresult {color: #000099; font-family: monospace;}")
-        ss.addRule(".re {color: #000099; font-weight: bold;}")
+        ss.addRule(".group {color: #000099; font-family: monospace;}")
+        ss.addRule(".inner_group {background-color: #FFFF00; color: #000000;}")
+        ss.addRule("ul {list-style-type: none; margin-left: 20px;}")
 
         self.results.setEditorKit(kit)
         doc = kit.createDefaultDocument()
         self.results.setDocument(doc)
-        self.results.setText("<em>yeet</em>")
+        self.results.setText("<em>Loading...</em>")
 
         scroller = swing.JScrollPane(self.results)
         box.add(scroller)
@@ -181,7 +179,7 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
         return None
 
     def getText(self):
-        return None
+        return self._msg
 
     def setEditable(self, editable):
         return
@@ -231,40 +229,47 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
                                 s = m.start(r)
                                 e = m.end(r)
                                 # print(prev_end, s)
-                                ret += self._msg[prev_end:s] + "~~@@~~" + g[r - 1] + "~~@@@~~"
+                                ret += self._msg[prev_end:s] + "~~@RG@~~" + g[r - 1] + "~~@@RG@@~~"
                                 prev_end = e
                             ret += self._msg[prev_end:m.end(0)]
                         else:
                             ret = m.group(0)
 
-                        out += "<li><span class='result'>" + html_encode(ret).replace("~~@@~~", "<span class='re'>")\
-                            .replace("~~@@@~~", "</span>") + "</span><ol>"
+                        out += "<li><span class='result'>{}</span>".format(
+                            html_encode(ret.strip())
+                            .replace("~~@RG@~~", "<span class='inner_group'>")
+                            .replace("~~@@RG@@~~", "</span>")
+                        )
 
                         if len(g):
                             if len(m.groupdict()) > 0:
+                                out += "<ul>"
                                 # named groups
                                 for g in m.groupdict():
-                                    out += "<li><b>{}</b>: <span class='subresult'>{}</span></li>"\
-                                        .format(g, html_encode(m.groupdict()[g]))
+                                    out += "<li>{}. <span class='group'>{}</span></li>" \
+                                        .format(g, html_encode(m.groupdict()[g].strip()))
+                                out += "</ul>"
 
                             else:
+                                out += "<ol>"
                                 for g in m.groups():
-                                    out += "<li><span class='subresult'>{}</span></li>".format(g)
+                                    out += "<li><span class='group'>{}</span></li>".format(html_encode(g).strip())
+                                out += "</ol>"
 
-                        out += "</ol></li>"
+                        else:
+                            out += "<br />&nbsp;"
+
+                        out += "</li>"
 
                     out += "</ol>"
 
                     self.results.setText(
-                        "Found <b>{}</b> match(es) for regex: <span class='re'>{}</span>".format(c, self._rex) + out
+                        "<b>Found <em>{}</em> match(es).</b>".format(c) + out
                         )
 
                 else:
-                    self.results.setText("No Matches for regex: {}".format(self._rex))
+                    self.results.setText("<b>No Matches for regex.</b>")
 
             except re.error  as e:
-                self.results.setText(
-                    "<b class='error'>Error parsing regex:<br /><span class='re'>{}</span><br /><br /><em>{}</em><b>"
-                        .format(self._rex, str(e))
-                )
+                self.results.setText("<b class='error'>Error parsing regex:<br /><em>{}</em><b>".format(str(e)))
 
