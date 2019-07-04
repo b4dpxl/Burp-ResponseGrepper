@@ -5,11 +5,12 @@ History:
 0.2 - Added a default regex ".*canary.*" and made the regex case insensitive
 1.0 - Custom tab pane with HTML styling and per-request regex
 1.1 - Updated styling and handled multiple spaces
+1.1.1 - Minor clean up
 
 """
 __author__ = "b4dpxl"
 __license__ = "GPL"
-__version__ = "1.1"
+__version__ = "1.1.1"
 
 import re
 import sys
@@ -18,7 +19,6 @@ import traceback
 from burp import IBurpExtender
 from burp import IMessageEditorTabFactory
 from burp import IMessageEditorTab
-from burp import IContextMenuFactory
 from burp import ITextEditor
 
 # Java imports
@@ -55,7 +55,7 @@ def fix_exception(func):
     return wrapper
 
 
-class BurpExtender(IBurpExtender, IMessageEditorTabFactory, IContextMenuFactory):
+class BurpExtender(IBurpExtender, IMessageEditorTabFactory):
 
     _callbacks = None
     _helpers = None
@@ -75,6 +75,7 @@ class BurpExtender(IBurpExtender, IMessageEditorTabFactory, IContextMenuFactory)
         return ResponseGrepperTab(self, controller, editable)
         
 
+# TODO - combine ResponseGrepperTab and GrepPanel?
 class ResponseGrepperTab(IMessageEditorTab):
 
     @fix_exception
@@ -83,42 +84,46 @@ class ResponseGrepperTab(IMessageEditorTab):
         self._currentMessage = None
         self._helpers = extender._helpers
         # self._editable = editable
-        self.results = MyEditor()
+        self.results_panel = GrepPanel()
 
     def getTabCaption(self):
         return TAB_TITLE
 
     def getUiComponent(self):
-        return self.results.getComponent()
+        return self.results_panel.getComponent()
 
     @fix_exception
     def isEnabled(self, content, isRequest):
-        return not isRequest
+        if not isRequest:
+            if content is not None and len(content) > 0:
+                return True
+
+        return False
 
     @fix_exception
     def setMessage(self, content, isRequest):
-        self.results.setEditable(False)
+        self.results_panel.setEditable(False)
         self._currentMessage = content
 
         if content is None or isRequest:
-            self.results.setText(None)
+            self.results_panel.setText(None)
             return
 
         r = self._helpers.analyzeResponse(content)
         msg = content[r.getBodyOffset():].tostring()
-        self.results.setMessage(msg)
+        self.results_panel.setMessage(msg)
 
     def getMessage(self): 
         return self._currentMessage
 
     def isModified(self):
-        return self.results.isTextModified()
+        return self.results_panel.isTextModified()
 
     def getSelectedData(self):
-        return self.results.getSelectedText()
+        return self.results_panel.getSelectedText()
 
 
-class MyEditor(ITextEditor):
+class GrepPanel(ITextEditor):
 
     _regex_fail = False
     _str_error = None
