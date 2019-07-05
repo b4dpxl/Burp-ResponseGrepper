@@ -45,8 +45,8 @@ def html_encode(text):
 
 # replace whitespaces with things that HTML will render
 def fix_whitespace(text):
-    def _replacer(a):
-        return " " + "&nbsp;" * (len(a.group(0)) - 1)
+    def _replacer(match):
+        return " " + "&nbsp;" * (len(match.group(0)) - 1)
 
     return re.compile(" {2,}").sub(_replacer, text).replace("\t", "&nbsp;"*4)
 
@@ -287,5 +287,5 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
                     self._render("<b>No Matches for regex.</b>")
 
             except re.error  as e:
-                self._render("<b class='error'>Error parsing regex:<br />\t<code>{}</code><b>".format(str(e)))
+                self._render("""<b class='error'>Error parsing regex: "<code>{}</code>"<b>""".format(str(e)))
 
