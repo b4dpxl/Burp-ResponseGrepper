@@ -6,11 +6,12 @@ History:
 1.0 - Custom tab pane with HTML styling and per-request regex
 1.1 - Updated styling and handled multiple spaces
 1.1.1 - Minor clean up
+1.2 - Replaced HTMLEditorKit with text/html JTextPane, tweaked styles
 
 """
 __author__ = "b4dpxl"
 __license__ = "GPL"
-__version__ = "1.1.1"
+__version__ = "1.2"
 
 import re
 import sys
@@ -22,8 +23,7 @@ from burp import IMessageEditorTab
 from burp import ITextEditor
 
 # Java imports
-from javax import swing 
-from javax.swing.text import html
+from javax import swing
 from java.awt import BorderLayout
 
 
@@ -39,9 +39,8 @@ def html_encode(text):
         "'": "&apos;",
         ">": "&gt;",
         "<": "&lt;",
-        # " ": "&nbsp;"
     }
-    return ("".join(html_escape_table.get(c, c) for c in text)).replace("  ", " &nbsp;")
+    return "".join(html_escape_table.get(c, c) for c in text)
 
 
 def fix_exception(func):
@@ -144,22 +143,10 @@ class GrepPanel(ITextEditor):
         self.tab.add(box, BorderLayout.NORTH)
 
         box = swing.Box.createHorizontalBox()
-        self.results = swing.JEditorPane()
+        self.results = swing.JTextPane()  # JEditorPane()
+        self.results.setContentType("text/html")
         self.results.setEditable(False)
-        kit = html.HTMLEditorKit()
-        ss = kit.getStyleSheet()
-        ss.addRule("* {font-size: 11pt;}")
-        ss.addRule(".error {color: #CC0000;}")
-        ss.addRule("li {color: #000000;}")
-        ss.addRule(".result {color: #006600; font-family: monospace;}")
-        ss.addRule(".group {color: #000099; font-family: monospace;}")
-        ss.addRule(".inner_group {background-color: #FFFF00; color: #000000;}")
-        ss.addRule("ul {list-style-type: none; margin-left: 20px;}")
-
-        self.results.setEditorKit(kit)
-        doc = kit.createDefaultDocument()
-        self.results.setDocument(doc)
-        self.results.setText("<em>Loading...</em>")
+        self.setText("<em>Loading...</em>")
 
         scroller = swing.JScrollPane(self.results)
         box.add(scroller)
@@ -212,10 +199,29 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
         self._update()
 
     @fix_exception
+    def setText(self, content):
+        self.results.setText(
+            r"""<html>
+            <head>
+            <style type="text/css"><!--
+                *, code {{font-size: 11pt;}}
+                .error {{color: #CC0000;}}
+                li {{color: #000000;}}
+                .result {{color: #006600;}}
+                .group {{color: #000099;}}
+                .inner_group {{background-color: #FFFF00; color: #000000;}}
+                ul {{list-style-type: none; margin-left: 20px;}}         
+            --></style>
+            </head>
+            <body>{}</body><html>"""
+            .format(content.replace("  ", " &nbsp;"))
+        )
+
+    @fix_exception
     def _update(self):
 
         if self._rex is None:
-            self.results.setText("<b class='error'>Regex not set</b>")
+            self.setText("<b class='error'>Regex not set</b>")
 
         else:
             try:
@@ -240,10 +246,10 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
                         else:
                             ret = m.group(0)
 
-                        out += "<li><span class='result'>{}</span>".format(
+                        out += "<li><code class='result'>{}</code>".format(
                             html_encode(ret.strip())
-                            .replace("~~@RG@~~", "<span class='inner_group'>")
-                            .replace("~~@@RG@@~~", "</span>")
+                            .replace("~~@RG@~~", "<code class='inner_group'>")
+                            .replace("~~@@RG@@~~", "</code>")
                         )
 
                         if len(g):
@@ -251,14 +257,14 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
                                 out += "<ul>"
                                 # named groups
                                 for g in m.groupdict():
-                                    out += "<li>{}. <span class='group'>{}</span></li>" \
+                                    out += "<li>{}. <code class='result'>{}</code></li>" \
                                         .format(g, html_encode(m.groupdict()[g].strip()))
                                 out += "</ul>"
 
                             else:
                                 out += "<ol>"
                                 for g in m.groups():
-                                    out += "<li><span class='group'>{}</span></li>".format(html_encode(g).strip())
+                                    out += "<li><code class='result'>{}</code></li>".format(html_encode(g).strip())
                                 out += "</ol>"
 
                         else:
@@ -268,13 +274,13 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
 
                     out += "</ol>"
 
-                    self.results.setText(
-                        "<b>Found <em>{}</em> match(es).</b>".format(c) + out
+                    self.setText(
+                        "<b>Found <em>{}</em> match(es).</b>{}".format(c, out)
                         )
 
                 else:
-                    self.results.setText("<b>No Matches for regex.</b>")
+                    self.setText("<b>No Matches for regex.</b>")
 
             except re.error  as e:
-                self.results.setText("<b class='error'>Error parsing regex:<br /><em>{}</em><b>".format(str(e)))
+                self.setText("<b class='error'>Error parsing regex:<br />    <code>{}</code><b>".format(str(e)))
 
