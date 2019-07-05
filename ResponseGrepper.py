@@ -43,11 +43,19 @@ def html_encode(text):
     return "".join(html_escape_table.get(c, c) for c in text)
 
 
+# replace whitespaces with things that HTML will render
+def fix_whitespace(text):
+    def _replacer(a):
+        return " " + "&nbsp;" * (len(a.group(0)) - 1)
+
+    return re.compile(" {2,}").sub(_replacer, text).replace("\t", "&nbsp;"*4)
+
+
 def fix_exception(func):
     def wrapper(self, *args, **kwargs):
         try:
             return func(self, *args, **kwargs)
-        except:
+        except Exception:
             sys.stderr.write('\n\n*** PYTHON EXCEPTION\n')
             traceback.print_exc(file=sys.stderr)
             raise
@@ -83,13 +91,13 @@ class ResponseGrepperTab(IMessageEditorTab):
         self._currentMessage = None
         self._helpers = extender._helpers
         # self._editable = editable
-        self.results_panel = GrepPanel()
+        self.grep_panel = GrepPanel()
 
     def getTabCaption(self):
         return TAB_TITLE
 
     def getUiComponent(self):
-        return self.results_panel.getComponent()
+        return self.grep_panel.getComponent()
 
     @fix_exception
     def isEnabled(self, content, isRequest):
@@ -101,31 +109,28 @@ class ResponseGrepperTab(IMessageEditorTab):
 
     @fix_exception
     def setMessage(self, content, isRequest):
-        self.results_panel.setEditable(False)
+        self.grep_panel.setEditable(False)
         self._currentMessage = content
 
         if content is None or isRequest:
-            self.results_panel.setText(None)
             return
 
         r = self._helpers.analyzeResponse(content)
         msg = content[r.getBodyOffset():].tostring()
-        self.results_panel.setMessage(msg)
+        self.grep_panel.setMessage(msg)
 
     def getMessage(self): 
         return self._currentMessage
 
     def isModified(self):
-        return self.results_panel.isTextModified()
+        return self.grep_panel.isTextModified()
 
     def getSelectedData(self):
-        return self.results_panel.getSelectedText()
+        return self.grep_panel.getSelectedText()
 
 
 class GrepPanel(ITextEditor):
 
-    _regex_fail = False
-    _str_error = None
     _msg = None
     _rex = None
 
@@ -146,7 +151,7 @@ class GrepPanel(ITextEditor):
         self.results = swing.JTextPane()  # JEditorPane()
         self.results.setContentType("text/html")
         self.results.setEditable(False)
-        self.setText("<em>Loading...</em>")
+        self._render("<em>Loading...</em>")
 
         scroller = swing.JScrollPane(self.results)
         box.add(scroller)
@@ -199,7 +204,7 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
         self._update()
 
     @fix_exception
-    def setText(self, content):
+    def _render(self, content):
         self.results.setText(
             r"""<html>
             <head>
@@ -214,14 +219,14 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
             --></style>
             </head>
             <body>{}</body><html>"""
-            .format(content.replace("  ", " &nbsp;"))
+            .format(fix_whitespace(content))
         )
 
     @fix_exception
     def _update(self):
 
         if self._rex is None:
-            self.setText("<b class='error'>Regex not set</b>")
+            self._render("<b class='error'>Regex not set</b>")
 
         else:
             try:
@@ -257,7 +262,7 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
                                 out += "<ul>"
                                 # named groups
                                 for g in m.groupdict():
-                                    out += "<li>{}. <code class='result'>{}</code></li>" \
+                                    out += "<li>{}: <code class='result'>{}</code></li>" \
                                         .format(g, html_encode(m.groupdict()[g].strip()))
                                 out += "</ul>"
 
@@ -274,13 +279,13 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
 
                     out += "</ol>"
 
-                    self.setText(
+                    self._render(
                         "<b>Found <em>{}</em> match(es).</b>{}".format(c, out)
                         )
 
                 else:
-                    self.setText("<b>No Matches for regex.</b>")
+                    self._render("<b>No Matches for regex.</b>")
 
             except re.error  as e:
-                self.setText("<b class='error'>Error parsing regex:<br />    <code>{}</code><b>".format(str(e)))
+                self._render("<b class='error'>Error parsing regex:<br />\t<code>{}</code><b>".format(str(e)))
 
