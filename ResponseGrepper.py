@@ -36,7 +36,6 @@ def html_encode(text):
     html_escape_table = {
         "&": "&amp;",
         '"': "&quot;",
-        "'": "&apos;",
         ">": "&gt;",
         "<": "&lt;",
     }
