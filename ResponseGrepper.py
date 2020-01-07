@@ -7,11 +7,12 @@ History:
 1.1 - Updated styling and handled multiple spaces
 1.1.1 - Minor clean up
 1.2 - Replaced HTMLEditorKit with text/html JTextPane, tweaked styles
+1.3 - RegEx updatable by pressing Enter
 
 """
 __author__ = "b4dpxl"
 __license__ = "GPL"
-__version__ = "1.2"
+__version__ = "1.3"
 
 import re
 import sys
@@ -81,7 +82,7 @@ class BurpExtender(IBurpExtender, IMessageEditorTabFactory):
         return ResponseGrepperTab(self, controller, editable)
         
 
-# TODO - combine ResponseGrepperTab and GrepPanel?
+# can we combine ResponseGrepperTab and GrepPanel?
 class ResponseGrepperTab(IMessageEditorTab):
 
     @fix_exception
@@ -139,7 +140,7 @@ class GrepPanel(ITextEditor):
 
         box = swing.Box.createHorizontalBox()
         box.add(swing.JLabel("Regular Expression"))
-        self.re_box = swing.JTextField(100)
+        self.re_box = swing.JTextField(100, actionPerformed=self._update_rex)
         box.add(self.re_box)
         box.add(swing.JButton('Update', actionPerformed=self._update_rex))
         box.add(swing.JButton('?', actionPerformed=self._help))
