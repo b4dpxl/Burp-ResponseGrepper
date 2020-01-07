@@ -82,7 +82,6 @@ class BurpExtender(IBurpExtender, IMessageEditorTabFactory):
         return ResponseGrepperTab(self, controller, editable)
         
 
-# can we combine ResponseGrepperTab and GrepPanel?
 class ResponseGrepperTab(IMessageEditorTab):
 
     @fix_exception
