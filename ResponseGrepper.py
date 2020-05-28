@@ -27,6 +27,9 @@ from burp import ITextEditor
 from javax import swing
 from java.awt import BorderLayout
 
+import json
+import os
+
 
 NAME = "Response Grepper"
 TAB_TITLE = "Grep"
@@ -67,6 +70,29 @@ class BurpExtender(IBurpExtender, IMessageEditorTabFactory):
     _callbacks = None
     _helpers = None
 
+    def __init__(self):
+        self._dark_mode = False
+        config_dir = os.path.expandvars("%APPDATA%\\BurpSuite\\")
+        if not os.path.exists(config_dir):
+            config_dir = os.path.expanduser("~/.BurpSuite")
+
+        if os.path.exists(config_dir):
+            config_file = os.path.join(config_dir, 'UserConfigPro.json')
+            if not os.path.exists(config_file):
+                config_file = os.path.join(config_dir, 'UserConfigCommunity.json')
+
+            if os.path.exists(config_file):
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+            
+                if config:
+                    try:
+                        theme = config.get('user_options', {}).get('display', {}).get('user_interface', {}).get('look_and_feel', '')
+                        self._dark_mode = theme.lower() in ['darcula']
+                        print("Dark mode = " + str(self._dark_mode))
+                    except (AttributeError, TypeError):
+                        print("Unable to load config")
+
     def registerExtenderCallbacks(self, callbacks):
         # for error handling
         sys.stdout = callbacks.getStdout()  
@@ -89,8 +115,7 @@ class ResponseGrepperTab(IMessageEditorTab):
         self._extender = extender
         self._currentMessage = None
         self._helpers = extender._helpers
-        # self._editable = editable
-        self.grep_panel = GrepPanel()
+        self.grep_panel = GrepPanel(self)
 
     def getTabCaption(self):
         return TAB_TITLE
@@ -134,17 +159,19 @@ class GrepPanel(ITextEditor):
     _rex = None
 
     @fix_exception
-    def __init__(self):
-        self.tab = swing.JPanel(BorderLayout())
+    def __init__(self, parent):
+        self._parent = parent
+        self._tab = swing.JPanel(BorderLayout())
 
         box = swing.Box.createHorizontalBox()
         box.add(swing.JLabel("Regular Expression"))
-        self.re_box = swing.JTextField(100, actionPerformed=self._update_rex)
-        box.add(self.re_box)
+        self._re_box = swing.JTextField(100, actionPerformed=self._update_rex)
+        box.add(self._re_box)
         box.add(swing.JButton('Update', actionPerformed=self._update_rex))
+        
         box.add(swing.JButton('?', actionPerformed=self._help))
 
-        self.tab.add(box, BorderLayout.NORTH)
+        self._tab.add(box, BorderLayout.NORTH)
 
         box = swing.Box.createHorizontalBox()
         self.results = swing.JTextPane()  # JEditorPane()
@@ -154,7 +181,7 @@ class GrepPanel(ITextEditor):
 
         scroller = swing.JScrollPane(self.results)
         box.add(scroller)
-        self.tab.add(box, BorderLayout.CENTER)
+        self._tab.add(box, BorderLayout.CENTER)
 
     def _help(self, event):
         swing.JOptionPane.showMessageDialog(None, """All matching subgroups will also be extracted. For example, to extract the value between 2 DIV tags: 
@@ -166,7 +193,7 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
 <div class='test'>(?P<tag>.*?)</div>""")
 
     def getComponent(self):
-        return self.tab
+        return self._tab
 
     def getSelectedText(self):
         return None
@@ -192,15 +219,30 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
         self._update()
 
     def _update_rex(self, event):
-        if self.re_box.getText() is None:
+        if self._re_box.getText() is None:
             self._rex = None
         else:
-            x = self.re_box.getText().strip()
+            x = self._re_box.getText().strip()
             if len(x):
                 self._rex = x
             else:
                 self._rex = None
         self._update()
+
+    _styles = [
+        r"""
+        .error {color: #CC0000 }
+        li, b {color: #000000 }
+        .result {color: #006600 }
+        .inner_group {background-color: #FFFF00; color: #000000;}
+        """,
+        r"""
+        .error {color: #FF0000 }
+        li, b {color: #CCCCCC }
+        .result {color: #93C763 }
+        .inner_group {background: #111111; color: #E9C063;}
+        """
+    ]
 
     @fix_exception
     def _render(self, content):
@@ -208,17 +250,17 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
             r"""<html>
             <head>
             <style type="text/css"><!--
-                *, code {{font-size: 11pt;}}
-                .error {{color: #CC0000;}}
-                li {{color: #000000;}}
-                .result {{color: #006600;}}
-                .group {{color: #000099;}}
-                .inner_group {{background-color: #FFFF00; color: #000000;}}
+                *, code {{font-size: 11pt; }}
+                body {{font-family: sans-serif; }}
+                {}
                 ul {{list-style-type: none; margin-left: 20px;}}         
             --></style>
             </head>
             <body>{}</body><html>"""
-            .format(fix_whitespace(content))
+            .format(
+                self._styles[self._parent._extender._dark_mode],
+                fix_whitespace(content)
+            )
         )
 
     @fix_exception
