@@ -8,11 +8,11 @@ History:
 1.1.1 - Minor clean up
 1.2 - Replaced HTMLEditorKit with text/html JTextPane, tweaked styles
 1.3 - RegEx updatable by pressing Enter
-
+1.4 - Support for dark themes
 """
 __author__ = "b4dpxl"
 __license__ = "GPL"
-__version__ = "1.3"
+__version__ = "1.4"
 
 import re
 import sys
