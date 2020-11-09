@@ -72,26 +72,7 @@ class BurpExtender(IBurpExtender, IMessageEditorTabFactory):
 
     def __init__(self):
         self._dark_mode = False
-        config_dir = os.path.expandvars("%APPDATA%\\BurpSuite\\")
-        if not os.path.exists(config_dir):
-            config_dir = os.path.expanduser("~/.BurpSuite")
 
-        if os.path.exists(config_dir):
-            config_file = os.path.join(config_dir, 'UserConfigPro.json')
-            if not os.path.exists(config_file):
-                config_file = os.path.join(config_dir, 'UserConfigCommunity.json')
-
-            if os.path.exists(config_file):
-                with open(config_file, 'r') as f:
-                    config = json.load(f)
-            
-                if config:
-                    try:
-                        theme = config.get('user_options', {}).get('display', {}).get('user_interface', {}).get('look_and_feel', '')
-                        self._dark_mode = theme.lower() in ['darcula']
-                        print("Dark mode = " + str(self._dark_mode))
-                    except (AttributeError, TypeError):
-                        print("Unable to load config")
 
     def registerExtenderCallbacks(self, callbacks):
         # for error handling
@@ -104,8 +85,32 @@ class BurpExtender(IBurpExtender, IMessageEditorTabFactory):
         callbacks.setExtensionName(NAME)
         callbacks.registerMessageEditorTabFactory(self)
 
+        self._checkTheme()
+
     def createNewInstance(self, controller, editable): 
         return ResponseGrepperTab(self, controller, editable)
+
+    def _checkTheme(self):
+        config_dir = os.path.expandvars("%APPDATA%\\BurpSuite\\")
+        if not os.path.exists(config_dir):
+            config_dir = os.path.expanduser("~/.BurpSuite")
+
+        if os.path.exists(config_dir):
+            cf = 'UserConfig{}.json'.format('Pro' if 'professional' in self._callbacks.getBurpVersion()[0].lower() else 'Community')
+            print("Looking for config file {}".format(cf))
+            config_file = os.path.join(config_dir, cf)
+
+            if os.path.exists(config_file):
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+            
+                if config:
+                    try:
+                        theme = config.get('user_options', {}).get('display', {}).get('user_interface', {}).get('look_and_feel', '')
+                        self._dark_mode = theme.lower() in ['darcula']
+                        print("Dark mode = " + str(self._dark_mode))
+                    except (AttributeError, TypeError):
+                        print("Unable to load config")
         
 
 class ResponseGrepperTab(IMessageEditorTab):
@@ -253,7 +258,8 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
                 *, code {{font-size: 11pt; }}
                 body {{font-family: sans-serif; }}
                 {}
-                ul {{list-style-type: none; margin-left: 20px;}}         
+                ul {{list-style-type: none; margin-left: 20px;}}     
+                li {{padding-bottom: 5px;}}    
             --></style>
             </head>
             <body>{}</body><html>"""
@@ -313,12 +319,13 @@ Named groups can also be used INSTEAD (don't mix named and unnamed). For example
                                     out += "<li><code class='result'>{}</code></li>".format(html_encode(g).strip())
                                 out += "</ol>"
 
-                        else:
-                            out += "<br />&nbsp;"
+                        # else:
+                        #     out += "<br />&nbsp;"
 
                         out += "</li>"
 
                     out += "</ol>"
+                    # print(out)
 
                     self._render(
                         "<b>Found <em>{}</em> match(es).</b>{}".format(c, out)
